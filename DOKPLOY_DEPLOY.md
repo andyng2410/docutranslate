@@ -206,7 +206,8 @@ services:
       - DOCUTRANSLATE_PORT=8010
       - DOCUTRANSLATE_PROXY_ENABLED=false
       - DOCUTRANSLATE_CACHE_NUM=10
-    command: ["--host", "0.0.0.0", "--cors"]
+    # QUAN TRỌNG: Dùng entrypoint thay vì command để đảm bảo -i được include
+    entrypoint: ["uv", "run", "docutranslate", "-i", "--host", "0.0.0.0", "--cors"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/"]
       interval: 30s
