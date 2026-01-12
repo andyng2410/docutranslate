@@ -8,9 +8,11 @@ Hướng dẫn chi tiết cách deploy DocuTranslate lên [Dokploy](https://dokp
 - Truy cập được vào Dokploy Dashboard
 - (Tùy chọn) Domain đã trỏ về server
 
-## Cách 1: Deploy từ Docker Image (Khuyên dùng)
+---
 
-Đây là cách đơn giản và nhanh nhất.
+## Cách 1: Build từ Git Repository với Docker Compose (Khuyên dùng)
+
+Đây là cách tốt nhất vì bạn có toàn quyền kiểm soát quá trình build và cấu hình.
 
 ### Bước 1: Tạo Project mới
 
@@ -18,110 +20,98 @@ Hướng dẫn chi tiết cách deploy DocuTranslate lên [Dokploy](https://dokp
 2. Click **"Create Project"**
 3. Đặt tên project (ví dụ: `docutranslate`)
 
-### Bước 2: Tạo Service
+### Bước 2: Tạo Service Compose
 
 1. Trong project vừa tạo, click **"Add Service"**
-2. Chọn **"Docker"**
+2. Chọn **"Compose"**
 3. Đặt tên service (ví dụ: `docutranslate-app`)
 
-### Bước 3: Cấu hình Docker Image
+### Bước 3: Cấu hình Git Repository
 
-Trong tab **General**, cấu hình như sau:
+Trong tab **General** > **Provider**, chọn **Git** và cấu hình:
 
 | Trường | Giá trị |
 |--------|---------|
-| **Image** | `xunbu/docutranslate:latest` |
-| **Registry** | Docker Hub (mặc định) |
+| **Repository URL** | `https://github.com/xunbu/docutranslate.git` |
+| **Branch** | `main` |
 
-> **Lưu ý:** Có thể sử dụng version cụ thể như `xunbu/docutranslate:v1.6.2`
+> **Lưu ý:** Có thể sử dụng repository fork của bạn nếu muốn custom
 
-### Bước 4: Cấu hình Port
+### Bước 4: Cấu hình Compose
 
-Trong tab **Ports**, thêm mapping:
+Trong tab **General**, đảm bảo:
 
-| Container Port | Protocol | Published |
-|----------------|----------|-----------|
-| `8010` | HTTP | Yes |
+| Trường | Giá trị |
+|--------|---------|
+| **Compose Path** | `docker-compose.yml` |
 
-### Bước 5: Cấu hình Environment Variables (Tùy chọn)
+Repository đã có sẵn file `docker-compose.yml` với cấu hình đúng:
 
-Trong tab **Environment**, thêm các biến môi trường nếu cần:
+```yaml
+version: '3.8'
 
-```env
-# Port (mặc định: 8010)
-DOCUTRANSLATE_PORT=8010
+services:
+  docutranslate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docutranslate
+    restart: unless-stopped
+    ports:
+      - "8010:8010"
+    volumes:
+      - docutranslate_output:/app/output
+    environment:
+      - DOCUTRANSLATE_PORT=8010
+      - DOCUTRANSLATE_PROXY_ENABLED=false
+      - DOCUTRANSLATE_CACHE_NUM=10
+    # QUAN TRỌNG: Dùng entrypoint để đảm bảo -i flag được include
+    entrypoint: ["uv", "run", "docutranslate", "-i", "--host", "0.0.0.0", "--cors"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-# Bật proxy cho requests ra ngoài
-DOCUTRANSLATE_PROXY_ENABLED=false
-
-# Cache size (mặc định: 10)
-DOCUTRANSLATE_CACHE_NUM=10
-
-# Hugging Face endpoint (cho tính năng docling)
-HF_ENDPOINT=https://hf-mirror.com
-```
-
-### Bước 6: Cấu hình Volume (Khuyên dùng)
-
-Trong tab **Volumes**, mount volume để lưu output files:
-
-| Host Path | Container Path | Mode |
-|-----------|----------------|------|
-| `/data/docutranslate/output` | `/app/output` | Read/Write |
-
-### Bước 7: Cấu hình Command (QUAN TRỌNG - Đọc kỹ)
-
-Trong tab **Advanced**, cấu hình như sau:
-
-#### Cách A: Chỉ thêm Arguments (Nếu Dokploy hỗ trợ)
-
-Nếu Dokploy có trường riêng cho **Arguments** hoặc **Args**:
-
-```
---host 0.0.0.0 --cors
-```
-
-#### Cách B: Override Command hoàn toàn (Khuyên dùng)
-
-Nếu Dokploy chỉ có trường **Command** và override toàn bộ, nhập đầy đủ:
-
-```
-uv run docutranslate -i --host 0.0.0.0 --cors
+volumes:
+  docutranslate_output:
 ```
 
 > **QUAN TRỌNG:**
-> - Flag `-i` (interactive) là **BẮT BUỘC** để khởi động web server
-> - `--host 0.0.0.0`: Cho phép truy cập từ tất cả interfaces (cần thiết cho container)
-> - `--cors`: Bật CORS support (cần thiết nếu sử dụng domain riêng)
->
-> **Nếu thiếu `-i`, ứng dụng sẽ không khởi động web server và bạn sẽ gặp lỗi 404!**
+> - `entrypoint` với flag `-i` là **BẮT BUỘC** để khởi động web server
+> - `--host 0.0.0.0` cho phép truy cập từ bên ngoài container
+> - `--cors` bật CORS support cho domain
 
-### Bước 8: Deploy
+### Bước 5: Deploy
 
-1. Click **"Deploy"** để bắt đầu
-2. Đợi container được pull và start
+1. Click **"Deploy"** để bắt đầu build
+2. Đợi quá trình build hoàn tất (có thể mất 2-5 phút lần đầu)
 3. Kiểm tra logs để đảm bảo không có lỗi
 
-### Bước 9: Cấu hình Domain (Tùy chọn)
+### Bước 6: Cấu hình Domain (Tùy chọn)
 
 Trong tab **Domains**:
 
 1. Click **"Add Domain"**
 2. Nhập domain (ví dụ: `translate.yourdomain.com`)
-3. Bật **HTTPS** nếu muốn SSL tự động
-4. Click **"Save"**
+3. Chọn container port: `8010`
+4. Bật **HTTPS** nếu muốn SSL tự động
+5. Click **"Save"**
 
 ---
 
-## Cách 2: Deploy từ Git Repository
+## Cách 2: Build từ Git Repository (Application)
 
 ### Bước 1: Tạo Project và Service
 
 1. Tạo project mới trong Dokploy
 2. Chọn **"Add Service"** > **"Application"**
-3. Chọn **"Git"** làm source
+3. Đặt tên service
 
 ### Bước 2: Cấu hình Git Repository
+
+Trong tab **General**, chọn **Git** và cấu hình:
 
 | Trường | Giá trị |
 |--------|---------|
@@ -131,95 +121,104 @@ Trong tab **Domains**:
 
 ### Bước 3: Cấu hình Build
 
-Dokploy sẽ tự động detect Dockerfile. Đảm bảo cấu hình:
-
 | Trường | Giá trị |
 |--------|---------|
 | **Build Type** | Dockerfile |
 | **Dockerfile Path** | `Dockerfile` |
 
-### Bước 4: Build Arguments (Tùy chọn)
+### Bước 4: Cấu hình Port
 
-Nếu muốn cài version cụ thể:
+Trong tab **Ports**:
+
+| Container Port | Protocol | Published |
+|----------------|----------|-----------|
+| `8010` | HTTP | Yes |
+
+### Bước 5: Cấu hình Command (QUAN TRỌNG)
+
+Trong tab **Advanced** > **Command**, nhập:
 
 ```
-DOC_VERSION=1.6.2
+--host 0.0.0.0 --cors
 ```
 
-### Bước 5: Tiếp tục từ Bước 4 của Cách 1
+> **Lưu ý:** Dockerfile đã có ENTRYPOINT với `-i`, chỉ cần thêm arguments
 
-Cấu hình Port, Environment, Volume, Command và Domain như hướng dẫn ở trên.
+Nếu vẫn gặp lỗi 404, thử override hoàn toàn:
+
+```
+uv run docutranslate -i --host 0.0.0.0 --cors
+```
+
+### Bước 6: Deploy và cấu hình Domain
+
+Tương tự như Cách 1.
+
+---
+
+## Cách 3: Deploy từ Docker Image có sẵn
+
+Nếu không muốn build, có thể dùng image có sẵn trên Docker Hub.
+
+### Bước 1: Tạo Service Docker
+
+1. Tạo project mới
+2. Chọn **"Add Service"** > **"Docker"**
+
+### Bước 2: Cấu hình Image
+
+| Trường | Giá trị |
+|--------|---------|
+| **Image** | `xunbu/docutranslate:latest` |
+
+### Bước 3: Cấu hình Port
+
+| Container Port | Protocol |
+|----------------|----------|
+| `8010` | HTTP |
+
+### Bước 4: Cấu hình Command
+
+Trong **Advanced** > **Command**:
+
+```
+--host 0.0.0.0 --cors
+```
+
+### Bước 5: Deploy
+
+Click **"Deploy"** và đợi container start.
 
 ---
 
 ## Cấu hình nâng cao
 
-### Health Check
+### Environment Variables
 
-Trong tab **Advanced** > **Health Check**:
+| Variable | Mô tả | Mặc định |
+|----------|-------|----------|
+| `DOCUTRANSLATE_PORT` | Port server | `8010` |
+| `DOCUTRANSLATE_PROXY_ENABLED` | Bật proxy | `false` |
+| `DOCUTRANSLATE_CACHE_NUM` | Cache size | `10` |
+| `HF_ENDPOINT` | Hugging Face endpoint | `https://hf-mirror.com` |
+
+### Resource Limits (Khuyên dùng cho production)
+
+| Resource | Giá trị |
+|----------|---------|
+| **CPU Limit** | 2.0 |
+| **Memory Limit** | 2GB |
+| **Memory Reservation** | 512MB |
+
+### Health Check
 
 ```yaml
 Test: ["CMD", "curl", "-f", "http://localhost:8010/"]
 Interval: 30s
 Timeout: 10s
 Retries: 3
-Start Period: 40s
+Start Period: 60s
 ```
-
-### Resource Limits
-
-Trong tab **Resources**, cấu hình giới hạn tài nguyên:
-
-| Resource | Recommended |
-|----------|-------------|
-| **CPU Limit** | 2.0 |
-| **Memory Limit** | 2GB |
-| **Memory Reservation** | 512MB |
-
-> **Lưu ý:** DocuTranslate với tính năng docling có thể cần nhiều RAM hơn khi xử lý PDF lớn.
-
-### Restart Policy
-
-Trong **Advanced** > **Restart Policy**:
-
-- Chọn `unless-stopped` hoặc `always` cho production
-
----
-
-## Sử dụng Docker Compose trong Dokploy
-
-Nếu muốn sử dụng Docker Compose, tạo file `docker-compose.yml`:
-
-```yaml
-version: '3.8'
-
-services:
-  docutranslate:
-    image: xunbu/docutranslate:latest
-    container_name: docutranslate
-    restart: unless-stopped
-    ports:
-      - "8010:8010"
-    volumes:
-      - ./output:/app/output
-    environment:
-      - DOCUTRANSLATE_PORT=8010
-      - DOCUTRANSLATE_PROXY_ENABLED=false
-      - DOCUTRANSLATE_CACHE_NUM=10
-    # QUAN TRỌNG: Dùng entrypoint thay vì command để đảm bảo -i được include
-    entrypoint: ["uv", "run", "docutranslate", "-i", "--host", "0.0.0.0", "--cors"]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-```
-
-Trong Dokploy:
-1. Chọn **"Add Service"** > **"Compose"**
-2. Paste nội dung trên vào
-3. Click **"Deploy"**
 
 ---
 
@@ -229,65 +228,44 @@ Trong Dokploy:
 
 **Đây là lỗi phổ biến nhất!**
 
-**Nguyên nhân 1:** Thiếu flag `-i` trong command
+**Nguyên nhân:** Thiếu flag `-i` trong command
 
 **Giải pháp:**
-1. Vào tab **Advanced** > **Command**
-2. Đảm bảo command có dạng: `uv run docutranslate -i --host 0.0.0.0 --cors`
-3. Flag `-i` là **BẮT BUỘC** để khởi động web server
-4. Redeploy sau khi sửa
+1. Nếu dùng **Compose**: Đảm bảo có `entrypoint` với `-i` flag
+2. Nếu dùng **Application/Docker**: Thêm vào Command:
+   ```
+   uv run docutranslate -i --host 0.0.0.0 --cors
+   ```
+3. Redeploy sau khi sửa
 
-**Nguyên nhân 2:** Command bị override sai cách
+**Kiểm tra logs:** Nếu thấy message "欢迎使用 DocuTranslate！请使用 '-i'..." nghĩa là thiếu flag `-i`
 
-**Giải pháp:**
-- Kiểm tra logs của container: nếu thấy message "欢迎使用 DocuTranslate！请使用 '-i'..." nghĩa là thiếu flag `-i`
-- Sửa command theo hướng dẫn ở Bước 7
+### Lỗi: Connection refused
 
-**Nguyên nhân 3:** Domain/Proxy configuration sai
+**Nguyên nhân:** Thiếu `--host 0.0.0.0`
 
-**Giải pháp:**
-- Kiểm tra domain đã trỏ đúng về service
-- Đảm bảo port mapping là `8010`
-- Thử truy cập trực tiếp bằng IP:Port trước
+**Giải pháp:** Thêm `--host 0.0.0.0` vào command/entrypoint
 
-### Lỗi: Container không start
+### Lỗi: CORS error
+
+**Giải pháp:** Thêm `--cors` vào command/entrypoint
+
+### Lỗi: Build failed
 
 **Nguyên nhân có thể:**
-- Port 8010 đã được sử dụng
+- Thiếu memory khi build
+- Network issue khi pull dependencies
 
 **Giải pháp:**
-- Thay đổi port mapping hoặc environment variable `DOCUTRANSLATE_PORT`
+- Tăng resource limits cho build
+- Retry build
 
-### Lỗi: Không truy cập được từ browser (Connection refused)
+### Lỗi: Container restart loop
 
-**Nguyên nhân có thể:**
-- Thiếu `--host 0.0.0.0` trong command
-
-**Giải pháp:**
-- Thêm `--host 0.0.0.0` vào phần Command trong Advanced settings
-
-### Lỗi: CORS error trên frontend
-
-**Nguyên nhân có thể:**
-- Chưa bật CORS
-
-**Giải pháp:**
-- Thêm `--cors` vào command
-- Hoặc sử dụng `--cors-regex ".*"` để cho phép tất cả origins
-
-### Lỗi: Files output bị mất sau khi restart
-
-**Nguyên nhân:**
-- Chưa mount volume
-
-**Giải pháp:**
-- Mount `/app/output` đến một thư mục persistent trên host
-
-### Lỗi: Out of memory khi xử lý PDF lớn
-
-**Giải pháp:**
-- Tăng Memory Limit trong Resource settings
-- Khuyên dùng ít nhất 2GB RAM cho việc xử lý PDF phức tạp
+**Kiểm tra logs** để xem lỗi cụ thể. Thường do:
+- Port conflict
+- Missing environment variables
+- Permission issues với volume
 
 ---
 
@@ -295,24 +273,25 @@ Trong Dokploy:
 
 Sau khi deploy thành công, truy cập:
 
-- **Web UI:** `http://your-domain:8010` hoặc domain đã cấu hình
-- **API Docs:** `http://your-domain:8010/docs` (Swagger UI)
-- **Health:** `http://your-domain:8010/` (trả về 200 OK)
+| URL | Mô tả |
+|-----|-------|
+| `http://your-domain:8010` | Web UI |
+| `http://your-domain:8010/docs` | API Documentation (Swagger) |
 
 ---
 
-## Cập nhật version
+## Cập nhật
+
+### Với Compose/Git:
+
+1. Code mới được push lên repository
+2. Trong Dokploy, click **"Redeploy"**
+3. Hoặc bật **Auto Deploy** cho tự động update khi có push
 
 ### Với Docker Image:
 
-1. Vào service trong Dokploy
-2. Thay đổi image tag (ví dụ: `xunbu/docutranslate:v1.7.0`)
-3. Click **"Redeploy"**
-
-### Với Git Repository:
-
-1. Push code mới lên repository
-2. Trong Dokploy, click **"Redeploy"** hoặc bật **Auto Deploy** cho tự động
+1. Thay đổi image tag (ví dụ: `xunbu/docutranslate:v1.7.0`)
+2. Click **"Redeploy"**
 
 ---
 
