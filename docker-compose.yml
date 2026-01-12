@@ -15,8 +15,9 @@ services:
       - DOCUTRANSLATE_PORT=8010
       - DOCUTRANSLATE_PROXY_ENABLED=false
       - DOCUTRANSLATE_CACHE_NUM=10
-    # QUAN TRỌNG: Dùng entrypoint để đảm bảo -i flag được include
-    entrypoint: ["uv", "run", "docutranslate", "-i", "--host", "0.0.0.0", "--cors"]
+    # Override entrypoint và command để đảm bảo app start đúng
+    entrypoint: []
+    command: ["uv", "run", "docutranslate", "-i", "--host", "0.0.0.0", "--cors"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/"]
       interval: 30s
