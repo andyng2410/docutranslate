@@ -69,17 +69,32 @@ Trong tab **Volumes**, mount volume để lưu output files:
 |-----------|----------------|------|
 | `/data/docutranslate/output` | `/app/output` | Read/Write |
 
-### Bước 7: Cấu hình Command (Quan trọng)
+### Bước 7: Cấu hình Command (QUAN TRỌNG - Đọc kỹ)
 
-Trong tab **Advanced** > **Command**, thêm arguments để cho phép truy cập từ bên ngoài:
+Trong tab **Advanced**, cấu hình như sau:
+
+#### Cách A: Chỉ thêm Arguments (Nếu Dokploy hỗ trợ)
+
+Nếu Dokploy có trường riêng cho **Arguments** hoặc **Args**:
 
 ```
 --host 0.0.0.0 --cors
 ```
 
-> **Giải thích:**
+#### Cách B: Override Command hoàn toàn (Khuyên dùng)
+
+Nếu Dokploy chỉ có trường **Command** và override toàn bộ, nhập đầy đủ:
+
+```
+uv run docutranslate -i --host 0.0.0.0 --cors
+```
+
+> **QUAN TRỌNG:**
+> - Flag `-i` (interactive) là **BẮT BUỘC** để khởi động web server
 > - `--host 0.0.0.0`: Cho phép truy cập từ tất cả interfaces (cần thiết cho container)
 > - `--cors`: Bật CORS support (cần thiết nếu sử dụng domain riêng)
+>
+> **Nếu thiếu `-i`, ứng dụng sẽ không khởi động web server và bạn sẽ gặp lỗi 404!**
 
 ### Bước 8: Deploy
 
@@ -209,6 +224,31 @@ Trong Dokploy:
 
 ## Troubleshooting
 
+### Lỗi: 404 Not Found khi truy cập
+
+**Đây là lỗi phổ biến nhất!**
+
+**Nguyên nhân 1:** Thiếu flag `-i` trong command
+
+**Giải pháp:**
+1. Vào tab **Advanced** > **Command**
+2. Đảm bảo command có dạng: `uv run docutranslate -i --host 0.0.0.0 --cors`
+3. Flag `-i` là **BẮT BUỘC** để khởi động web server
+4. Redeploy sau khi sửa
+
+**Nguyên nhân 2:** Command bị override sai cách
+
+**Giải pháp:**
+- Kiểm tra logs của container: nếu thấy message "欢迎使用 DocuTranslate！请使用 '-i'..." nghĩa là thiếu flag `-i`
+- Sửa command theo hướng dẫn ở Bước 7
+
+**Nguyên nhân 3:** Domain/Proxy configuration sai
+
+**Giải pháp:**
+- Kiểm tra domain đã trỏ đúng về service
+- Đảm bảo port mapping là `8010`
+- Thử truy cập trực tiếp bằng IP:Port trước
+
 ### Lỗi: Container không start
 
 **Nguyên nhân có thể:**
@@ -217,7 +257,7 @@ Trong Dokploy:
 **Giải pháp:**
 - Thay đổi port mapping hoặc environment variable `DOCUTRANSLATE_PORT`
 
-### Lỗi: Không truy cập được từ browser
+### Lỗi: Không truy cập được từ browser (Connection refused)
 
 **Nguyên nhân có thể:**
 - Thiếu `--host 0.0.0.0` trong command
